@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -30,16 +30,26 @@ const Onboarding = () => {
   const [bio, setBio] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
   const [loading, setLoading] = useState(false);
-  const { user, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // This effect just protects the page
+  useEffect(() => {
+    // AppRoutes handles the redirect logic, this is a fallback.
+    if (!authLoading && !user) {
+      navigate("/auth");
+    }
+    if (!authLoading && user && profile) {
+      navigate("/");
+    }
+  }, [user, profile, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !role) return;
 
     setLoading(true);
-
     try {
       const profileData = {
         id: user.id,
@@ -51,23 +61,18 @@ const Onboarding = () => {
         bio: bio || undefined,
         hourly_rate: hourlyRate ? parseFloat(hourlyRate) : undefined,
       };
-
       const { error } = await authHelpers.createProfile(profileData);
       if (error) throw error;
 
+      // Manually refresh the profile in the context
       await refreshProfile();
-
+      
       toast({
         title: "Profile Created!",
         description: "Your profile has been set up successfully.",
       });
-
-      // Navigate based on role
-      if (role === "employer") {
-        navigate("/employer-dashboard");
-      } else {
-        navigate("/jobs");
-      }
+      // NO NAVIGATION HERE. AppRoutes will see the new profile and redirect.
+      
     } catch (error: any) {
       toast({
         title: "Error",
@@ -75,7 +80,7 @@ const Onboarding = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setLoading(false); // AppRoutes will handle navigation
     }
   };
 
@@ -100,11 +105,16 @@ const Onboarding = () => {
     },
   ];
 
-  if (!user) {
-    navigate("/auth");
+  // Show nothing while context is loading or redirecting
+  if (authLoading || (user && profile)) {
+    return null;
+  }
+  
+  if (!authLoading && !user) {
     return null;
   }
 
+  // Show onboarding form
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-2xl shadow-elevated">

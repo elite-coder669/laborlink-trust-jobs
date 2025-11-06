@@ -24,25 +24,35 @@ export interface Profile {
 export const authHelpers = {
   async signUp(email: string, password: string) {
     const redirectUrl = `${window.location.origin}/onboarding`;
-    
-    const { data, error } = await supabase.auth.signUp({
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectUrl,
       },
     });
-    
-    return { data, error };
+    // On sign up, profile will be null. This is expected.
+    return { data: { user: authData.user, profile: null }, error: authError };
   },
 
   async signIn(email: string, password: string) {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
     
-    return { data, error };
+    if (authError || !authData.user) {
+      return { data: { user: null, profile: null }, error: authError };
+    }
+
+    // After sign-in, immediately fetch the profile.
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+
+    return { data: { user: authData.user, profile: profileData }, error: profileError };
   },
 
   async signInWithGoogle() {
@@ -52,7 +62,6 @@ export const authHelpers = {
         redirectTo: `${window.location.origin}/onboarding`,
       },
     });
-    
     return { data, error };
   },
 
@@ -71,20 +80,37 @@ export const authHelpers = {
     return data.user;
   },
 
-  async getProfile(userId: string): Promise<Profile | null> {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+  // --- DEBUGGING ADDED HERE ---
+// --- DEBUGGING WITH TIMEOUT ---
+async getProfile(userId: string): Promise<Profile | null> {
+  console.log("DEBUG: 3a. Fetching profile for", userId);
 
-    if (error) {
-      console.error("Error fetching profile:", error);
-      return null;
-    }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
 
-    return data;
-  },
+  console.log("DEBUG: 3b. Supabase returned", { data, error });
+
+  if (error) {
+    console.error("DEBUG: 3c. Error fetching profile:", error.message);
+    return null;
+  }
+
+  if (!data) {
+    console.warn("DEBUG: 3d. No profile found for user:", userId);
+    return null;
+  }
+
+  console.log("DEBUG: 3e. Profile fetched successfully:", data);
+  return data;
+},
+
+
+
+  // --- END DEBUGGING ---
+  // --- END DEBUGGING ---
 
   async createProfile(profile: Omit<Profile, "created_at" | "updated_at" | "trust_score" | "verified" | "completed_jobs_count">) {
     const { data, error } = await supabase
@@ -92,7 +118,6 @@ export const authHelpers = {
       .insert(profile)
       .select()
       .single();
-
     if (error) {
       console.error("Error creating profile:", error);
       return { data: null, error };
@@ -108,7 +133,6 @@ export const authHelpers = {
       .eq("id", userId)
       .select()
       .single();
-
     if (error) {
       console.error("Error updating profile:", error);
       return { data: null, error };

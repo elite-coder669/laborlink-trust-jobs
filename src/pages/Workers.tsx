@@ -4,117 +4,84 @@ import WorkerCard from "@/components/WorkerCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MapPin, Briefcase, Filter } from "lucide-react";
+import { Search, MapPin, Briefcase, Filter, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Link } from "react-router-dom";
+
+// Loading Skeleton
+const WorkerCardSkeleton = () => (
+  <Card>
+    <CardContent className="pt-6 space-y-4">
+      <div className="flex items-start gap-4">
+        <Skeleton className="w-16 h-16 rounded-full" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      </div>
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-10 w-full" />
+      <div className="flex flex-wrap gap-2">
+        <Skeleton className="h-5 w-20" />
+        <Skeleton className="h-5 w-20" />
+      </div>
+    </CardContent>
+    <CardFooter>
+      <Skeleton className="h-11 w-full" />
+    </CardFooter>
+  </Card>
+);
+
+// Fetch function
+const fetchWorkers = async (
+  searchQuery: string,
+  selectedCategory: string,
+  selectedLocation: string,
+) => {
+  let query = supabase.from("profiles").select("*");
+
+  // Always filter for worker roles
+  query = query.in("role", ["laborer", "artisan"]);
+
+  if (searchQuery) {
+    // Using `or` to search in name, bio, and skills
+    query = query.or(
+      `name.ilike.%${searchQuery}%,bio.ilike.%${searchQuery}%,skills.cs.{${searchQuery}}`,
+    );
+  }
+
+  if (selectedCategory !== "all") {
+    // Category for a worker is their role
+    query = query.eq("role", selectedCategory);
+  }
+
+  if (selectedLocation !== "all") {
+    query = query.ilike("location", `%${selectedLocation}%`);
+  }
+
+  const { data, error } = await query.order("trust_score", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data;
+};
 
 const Workers = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedLocation, setSelectedLocation] = useState("all");
 
-  const allWorkers = [
-    {
-      name: "Rajesh Kumar",
-      category: "Construction Worker",
-      location: "Mumbai, Maharashtra",
-      rating: 4.9,
-      completedJobs: 145,
-      hourlyRate: "80",
-      skills: ["Masonry", "Concrete Work", "Carpentry"],
-      isVerified: true,
-    },
-    {
-      name: "Priya Sharma",
-      category: "Plumber",
-      location: "Bangalore, Karnataka",
-      rating: 4.8,
-      completedJobs: 89,
-      hourlyRate: "100",
-      skills: ["Pipe Installation", "Repairs", "Maintenance"],
-      isVerified: true,
-    },
-    {
-      name: "Amit Patel",
-      category: "Electrician",
-      location: "Ahmedabad, Gujarat",
-      rating: 5.0,
-      completedJobs: 210,
-      hourlyRate: "120",
-      skills: ["Wiring", "Panel Installation", "Troubleshooting"],
-      isVerified: true,
-    },
-    {
-      name: "Suresh Reddy",
-      category: "Painter",
-      location: "Hyderabad, Telangana",
-      rating: 4.7,
-      completedJobs: 156,
-      hourlyRate: "75",
-      skills: ["Interior Painting", "Exterior Painting", "Texture Work"],
-      isVerified: true,
-    },
-    {
-      name: "Meena Devi",
-      category: "Housekeeping",
-      location: "Delhi, NCR",
-      rating: 4.9,
-      completedJobs: 320,
-      hourlyRate: "60",
-      skills: ["Deep Cleaning", "Laundry", "Organization"],
-      isVerified: true,
-    },
-    {
-      name: "Vikram Singh",
-      category: "Driver",
-      location: "Mumbai, Maharashtra",
-      rating: 4.8,
-      completedJobs: 178,
-      hourlyRate: "70",
-      skills: ["Safe Driving", "City Navigation", "Vehicle Maintenance"],
-      isVerified: true,
-    },
-    {
-      name: "Lakshmi Iyer",
-      category: "Cook",
-      location: "Chennai, Tamil Nadu",
-      rating: 5.0,
-      completedJobs: 245,
-      hourlyRate: "90",
-      skills: ["South Indian Cuisine", "Multi-Cuisine", "Hygiene"],
-      isVerified: true,
-    },
-    {
-      name: "Mohammed Ansari",
-      category: "Carpenter",
-      location: "Bangalore, Karnataka",
-      rating: 4.9,
-      completedJobs: 198,
-      hourlyRate: "110",
-      skills: ["Furniture Making", "Repairs", "Wood Finishing"],
-      isVerified: true,
-    },
-    {
-      name: "Sunita Yadav",
-      category: "Electrician",
-      location: "Pune, Maharashtra",
-      rating: 4.8,
-      completedJobs: 167,
-      hourlyRate: "105",
-      skills: ["Home Wiring", "Appliance Repair", "Solar Installation"],
-      isVerified: true,
-    },
-  ];
-
-  const filteredWorkers = allWorkers.filter((worker) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      worker.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      worker.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      worker.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesCategory = selectedCategory === "all" || worker.category.includes(selectedCategory);
-    const matchesLocation = selectedLocation === "all" || worker.location.includes(selectedLocation);
-
-    return matchesSearch && matchesCategory && matchesLocation;
+  const {
+    data: workers,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["workers", searchQuery, selectedCategory, selectedLocation],
+    queryFn: () => fetchWorkers(searchQuery, selectedCategory, selectedLocation),
+    keepPreviousData: true,
   });
 
   return (
@@ -140,7 +107,7 @@ const Workers = () => {
             <div className="md:col-span-2 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
-                placeholder="Search workers, skills, or categories..."
+                placeholder="Search workers, skills, or roles..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-12"
@@ -152,15 +119,10 @@ const Workers = () => {
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Construction">Construction</SelectItem>
-                <SelectItem value="Plumber">Plumber</SelectItem>
-                <SelectItem value="Electrician">Electrician</SelectItem>
-                <SelectItem value="Painter">Painter</SelectItem>
-                <SelectItem value="Housekeeping">Housekeeping</SelectItem>
-                <SelectItem value="Driver">Driver</SelectItem>
-                <SelectItem value="Cook">Cook</SelectItem>
-                <SelectItem value="Carpenter">Carpenter</SelectItem>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="laborer">Laborer</SelectItem>
+                <SelectItem value="artisan">Artisan</SelectItem>
+                {/* Add other roles if needed, or query them from your schema */}
               </SelectContent>
             </Select>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
@@ -188,7 +150,11 @@ const Workers = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-foreground">
-              {filteredWorkers.length} Workers Available
+              {isLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                `${workers?.length || 0} Workers Available`
+              )}
             </h2>
             <Button variant="outline">
               <Filter className="w-4 h-4 mr-2" />
@@ -196,17 +162,41 @@ const Workers = () => {
             </Button>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredWorkers.map((worker, index) => (
-              <WorkerCard key={index} {...worker} />
-            ))}
+            {isLoading ? (
+              <>
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+              </>
+            ) : error ? (
+              <p className="text-destructive col-span-3">Failed to load workers.</p>
+            ) : workers && workers.length > 0 ? (
+              workers.map((worker: any) => (
+                <Link to={`/workers/${worker.id}`} key={worker.id}>
+                  <WorkerCard
+                    name={worker.name}
+                    category={worker.role.charAt(0).toUpperCase() + worker.role.slice(1)}
+                    location={worker.location || "N/A"}
+                    rating={worker.trust_score || 0}
+                    completedJobs={worker.completed_jobs_count || 0}
+                    hourlyRate={String(worker.hourly_rate || "N/A")}
+                    skills={worker.skills || []}
+                    isVerified={worker.verified || false}
+                    avatarUrl={worker.avatar_url}
+                  />
+                </Link>
+              ))
+            ) : (
+              <div className="text-center py-12 col-span-3">
+                <p className="text-lg text-muted-foreground">
+                  No workers found matching your criteria. Try adjusting your filters.
+                </p>
+              </div>
+            )}
           </div>
-          {filteredWorkers.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-lg text-muted-foreground">
-                No workers found matching your criteria. Try adjusting your filters.
-              </p>
-            </div>
-          )}
         </div>
       </section>
     </div>

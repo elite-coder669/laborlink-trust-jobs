@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ const JobDetail = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -30,6 +32,85 @@ const JobDetail = () => {
   useEffect(() => {
     loadJobDetails();
   }, [id, user]);
+
+  // Fetch applications for this job (visible to the employer)
+  const {
+    data: jobApplications,
+    isLoading: isLoadingJobApplications,
+    refetch: refetchJobApplications,
+  } = useQuery({
+    queryKey: ["jobApplications", id],
+    queryFn: async () => {
+      if (!id) return [];
+      const { data: apps, error } = await supabase
+        .from("applications")
+        .select(
+          `*, profiles:laborer_id ( id, name, trust_score, avatar_url, completed_jobs_count )`
+        )
+        .eq("job_id", id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return apps || [];
+    },
+    enabled: !!id && !!job && profile?.id === job?.employer_id,
+  });
+
+  const applicationMutation = useMutation({
+    mutationFn: async ({ applicationId, newStatus }: { applicationId: string; newStatus: string }) => {
+      const { data: appData, error } = await supabase
+        .from("applications")
+        .update({ status: newStatus })
+        .eq("id", applicationId)
+        .select()
+        .single();
+      if (error) throw error;
+      return appData;
+    },
+    onSuccess: async (data) => {
+      toast({ title: `Application ${data.status}`, description: "Status updated" });
+      // Refresh local and global caches
+      queryClient.invalidateQueries({ queryKey: ["jobApplications", id] });
+      queryClient.invalidateQueries({ queryKey: ["employerApplicants", user?.id] });
+      if (data?.laborer_id) queryClient.invalidateQueries({ queryKey: ["workerApplications", data.laborer_id] });
+      // Refresh job details to update applicants_count etc.
+      await loadJobDetails();
+
+      // If accepted, check if we reached positions_required and update job status if needed
+      try {
+        if (data?.status === "accepted" && data?.job_id) {
+          const { data: jobData, error: jobFetchError } = await supabase
+            .from("jobs")
+            .select("positions_required")
+            .eq("id", data.job_id)
+            .maybeSingle();
+
+          if (!jobFetchError) {
+            const positions = jobData?.positions_required ?? 1;
+            const { count: acceptedCount, error: countError } = await supabase
+              .from("applications")
+              .select("id", { count: "exact", head: true })
+              .eq("job_id", data.job_id)
+              .eq("status", "accepted");
+
+            if (!countError) {
+              const accepted = acceptedCount || 0;
+              if (accepted >= positions) {
+                const { error: jobError } = await supabase
+                  .from("jobs")
+                  .update({ status: "in_progress" })
+                  .eq("id", data.job_id);
+                if (jobError) console.warn("Failed to update job status:", jobError.message);
+                queryClient.invalidateQueries({ queryKey: ["employerJobs", user?.id, "open"] });
+                queryClient.invalidateQueries({ queryKey: ["employerStats", user?.id] });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Error in post-accept logic:", e);
+      }
+    },
+  });
 
   const loadJobDetails = async () => {
     if (!id) return;
@@ -220,6 +301,9 @@ const JobDetail = () => {
                     </div>
                   </div>
                 </div>
+                <div className="text-sm text-muted-foreground"> 
+                  {job.applicants_count || 0} applicant(s) • {job.positions_required || 1} position(s) required
+                </div>
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                   <DialogTrigger asChild>
                     <Button size="lg" disabled={hasApplied || profile?.role === "employer"}>
@@ -236,9 +320,7 @@ const JobDetail = () => {
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Apply for {job.title}</DialogTitle>
-                      <DialogDescription>
-                        Submit your application to the employer
-                      </DialogDescription>
+                      <DialogDescription>Submit your application to the employer</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -275,7 +357,62 @@ const JobDetail = () => {
                 </Dialog>
               </div>
             </CardHeader>
-          </Card>
+
+            </Card>
+
+            {/* Employer: Applicants management (visible to job owner) */}
+            {profile?.id === job.employer_id && (
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle>Applicants</CardTitle>
+                  <CardDescription>
+                    Review applications and accept up to {job.positions_required || 1} worker(s)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingJobApplications ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    </div>
+                  ) : jobApplications && jobApplications.length > 0 ? (
+                    <div className="grid gap-4">
+                      {jobApplications.map((app: any) => (
+                        <div key={app.id} className="p-4 border rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <div className="font-semibold">{app.profiles?.name || 'Unknown'}</div>
+                              <div className="text-sm text-muted-foreground">{new Date(app.created_at).toLocaleDateString()}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm text-muted-foreground">{app.status}</div>
+                            </div>
+                          </div>
+                          {app.message && <div className="text-sm text-muted-foreground mb-2">{app.message}</div>}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => applicationMutation.mutate({ applicationId: app.id, newStatus: 'rejected' })}
+                              disabled={applicationMutation.isLoading}
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              className="bg-secondary hover:bg-secondary-hover"
+                              onClick={() => applicationMutation.mutate({ applicationId: app.id, newStatus: 'accepted' })}
+                              disabled={applicationMutation.isLoading || app.status === 'accepted'}
+                            >
+                              Accept
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center text-muted-foreground">No applicants yet.</div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
           {/* Job Details */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

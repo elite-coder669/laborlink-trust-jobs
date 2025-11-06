@@ -22,6 +22,7 @@ export type Database = {
           job_id: string
           laborer_id: string
           message: string | null
+          // This is the updated enum
           status: Database["public"]["Enums"]["application_status"] | null
           updated_at: string | null
         }
@@ -32,6 +33,7 @@ export type Database = {
           job_id: string
           laborer_id: string
           message?: string | null
+          // This is the updated enum
           status?: Database["public"]["Enums"]["application_status"] | null
           updated_at?: string | null
         }
@@ -42,6 +44,7 @@ export type Database = {
           job_id?: string
           laborer_id?: string
           message?: string | null
+          // This is the updated enum
           status?: Database["public"]["Enums"]["application_status"] | null
           updated_at?: string | null
         }
@@ -145,6 +148,7 @@ export type Database = {
       jobs: {
         Row: {
           applicants_count: number | null
+          positions_required: number | null
           category: Database["public"]["Enums"]["job_category"]
           created_at: string | null
           description: string
@@ -163,6 +167,7 @@ export type Database = {
         }
         Insert: {
           applicants_count?: number | null
+          positions_required?: number | null
           category: Database["public"]["Enums"]["job_category"]
           created_at?: string | null
           description: string
@@ -181,6 +186,7 @@ export type Database = {
         }
         Update: {
           applicants_count?: number | null
+          positions_required?: number | null
           category?: Database["public"]["Enums"]["job_category"]
           created_at?: string | null
           description?: string
@@ -431,7 +437,13 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      application_status: "submitted" | "under_review" | "accepted" | "rejected"
+      // This is the important change
+      application_status:
+        | "submitted"
+        | "under_review"
+        | "accepted"
+        | "rejected"
+        | "invited"
       bid_status: "pending" | "accepted" | "rejected"
       job_category:
         | "construction"
@@ -570,7 +582,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      application_status: ["submitted", "under_review", "accepted", "rejected"],
+      // This is the important change
+      application_status: [
+        "submitted",
+        "under_review",
+        "accepted",
+        "rejected",
+        "invited",
+      ],
       bid_status: ["pending", "accepted", "rejected"],
       job_category: [
         "construction",

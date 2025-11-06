@@ -5,35 +5,95 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Briefcase, MapPin, IndianRupee, Clock, FileText } from "lucide-react";
+import { Briefcase, MapPin, IndianRupee, Clock, FileText, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useMutation } from "@tanstack/react-query";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { Database } from "@/integrations/supabase/types";
 
-const PostJob = () => {
+type JobFormData = {
+  title: string;
+  category: Database["public"]["Enums"]["job_category"] | "";
+  description: string;
+  location: string;
+  duration_days: string;
+  wage: string;
+  wage_type: Database["public"]["Enums"]["wage_type"];
+  skills: string;
+  positions: string;
+};
+
+const PostJobForm = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
+  const { user } = useAuth();
+
+  const [formData, setFormData] = useState<JobFormData>({
     title: "",
     category: "",
     description: "",
     location: "",
-    duration: "",
+    duration_days: "",
     wage: "",
-    wageType: "day",
+    wage_type: "daily",
     skills: "",
+    positions: "1",
+  });
+
+  const jobMutation = useMutation({
+    mutationFn: async (newJob: Database["public"]["Tables"]["jobs"]["Insert"]) => {
+      if (!user) throw new Error("User not authenticated");
+
+      const { data, error } = await supabase.from("jobs").insert(newJob).select().single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Job Posted Successfully!",
+        description: "Your job listing is now live and visible to workers.",
+      });
+      navigate(`/jobs/${data.id}`); // Navigate to the new job's detail page
+    },
+    onError: (error) => {
+      toast({
+        title: "Error Posting Job",
+        description: error.message || "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    toast({
-      title: "Job Posted Successfully!",
-      description: "Your job listing is now live and visible to workers.",
+    if (!user) {
+      toast({ title: "You must be logged in to post a job.", variant: "destructive" });
+      return;
+    }
+
+    const skillsArray = formData.skills.split(",").map((s) => s.trim()).filter(Boolean);
+
+    jobMutation.mutate({
+      title: formData.title,
+      category: formData.category as Database["public"]["Enums"]["job_category"],
+      description: formData.description,
+      location: formData.location,
+      duration_days: formData.duration_days ? parseInt(formData.duration_days, 10) : null,
+      wage: parseFloat(formData.wage),
+      wage_type: formData.wage_type,
+      required_skills: skillsArray.length > 0 ? skillsArray : null,
+      positions_required: formData.positions ? parseInt(formData.positions, 10) : 1,
+      employer_id: user.id,
+      status: "open", // Set a default status
     });
-    navigate("/employer-dashboard");
   };
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: keyof JobFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -76,25 +136,30 @@ const PostJob = () => {
                       onChange={(e) => handleChange("title", e.target.value)}
                       required
                       className="h-12"
+                      disabled={jobMutation.isPending}
                     />
                   </div>
 
                   {/* Category */}
                   <div className="space-y-2">
                     <Label htmlFor="category">Category *</Label>
-                    <Select value={formData.category} onValueChange={(value) => handleChange("category", value)} required>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) =>
+                        handleChange("category", value as Database["public"]["Enums"]["job_category"])
+                      }
+                      required
+                      disabled={jobMutation.isPending}
+                    >
                       <SelectTrigger className="h-12">
                         <SelectValue placeholder="Select job category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Construction">Construction</SelectItem>
-                        <SelectItem value="Plumbing">Plumbing</SelectItem>
-                        <SelectItem value="Painting">Painting</SelectItem>
-                        <SelectItem value="Electrical">Electrical</SelectItem>
-                        <SelectItem value="Housekeeping">Housekeeping</SelectItem>
-                        <SelectItem value="Delivery">Delivery</SelectItem>
-                        <SelectItem value="Carpentry">Carpentry</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        <SelectItem value="construction">Construction</SelectItem>
+                        <SelectItem value="agriculture">Agriculture</SelectItem>
+                        <SelectItem value="shop_renovation">Shop Renovation</SelectItem>
+                        <SelectItem value="apartment_association">Apartment Association</SelectItem>
+                        <SelectItem value="custom_craft">Custom Craft</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -110,6 +175,7 @@ const PostJob = () => {
                       required
                       rows={5}
                       className="resize-none"
+                      disabled={jobMutation.isPending}
                     />
                   </div>
 
@@ -126,22 +192,24 @@ const PostJob = () => {
                       onChange={(e) => handleChange("location", e.target.value)}
                       required
                       className="h-12"
+                      disabled={jobMutation.isPending}
                     />
                   </div>
 
-                  {/* Duration */}
+                  {/* Duration (Fixed) */}
                   <div className="space-y-2">
-                    <Label htmlFor="duration" className="flex items-center gap-2">
+                    <Label htmlFor="duration_days" className="flex items-center gap-2">
                       <Clock className="w-4 h-4 text-secondary" />
-                      Duration *
+                      Estimated Duration (in days)
                     </Label>
                     <Input
-                      id="duration"
-                      placeholder="e.g., 2-3 weeks, 1 month, Ongoing"
-                      value={formData.duration}
-                      onChange={(e) => handleChange("duration", e.target.value)}
-                      required
+                      id="duration_days"
+                      type="number"
+                      placeholder="e.g., 14"
+                      value={formData.duration_days}
+                      onChange={(e) => handleChange("duration_days", e.target.value)}
                       className="h-12"
+                      disabled={jobMutation.isPending}
                     />
                   </div>
 
@@ -160,19 +228,24 @@ const PostJob = () => {
                         onChange={(e) => handleChange("wage", e.target.value)}
                         required
                         className="h-12"
+                        disabled={jobMutation.isPending}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="wageType">Wage Type *</Label>
-                      <Select value={formData.wageType} onValueChange={(value) => handleChange("wageType", value)}>
+                      <Select
+                        value={formData.wage_type}
+                        onValueChange={(value) =>
+                          handleChange("wage_type", value as Database["public"]["Enums"]["wage_type"])
+                        }
+                        disabled={jobMutation.isPending}
+                      >
                         <SelectTrigger className="h-12">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="hour">Per Hour</SelectItem>
-                          <SelectItem value="day">Per Day</SelectItem>
-                          <SelectItem value="week">Per Week</SelectItem>
-                          <SelectItem value="month">Per Month</SelectItem>
+                          <SelectItem value="hourly">Per Hour</SelectItem>
+                          <SelectItem value="daily">Per Day</SelectItem>
                           <SelectItem value="project">Per Project</SelectItem>
                         </SelectContent>
                       </Select>
@@ -187,10 +260,11 @@ const PostJob = () => {
                     </Label>
                     <Input
                       id="skills"
-                      placeholder="e.g., Masonry, Labor, Material Handling (comma-separated)"
+                      placeholder="e.g., Masonry, Labor, Material Handling"
                       value={formData.skills}
                       onChange={(e) => handleChange("skills", e.target.value)}
                       className="h-12"
+                      disabled={jobMutation.isPending}
                     />
                     <p className="text-xs text-muted-foreground">
                       Separate multiple skills with commas
@@ -198,16 +272,37 @@ const PostJob = () => {
                   </div>
 
                   {/* Submit */}
+                  {/* Positions required */}
+                  <div className="space-y-2">
+                    <Label htmlFor="positions">Number of Workers Required</Label>
+                    <Input
+                      id="positions"
+                      type="number"
+                      min={1}
+                      value={formData.positions}
+                      onChange={(e) => handleChange("positions", e.target.value)}
+                      className="h-12"
+                      disabled={jobMutation.isPending}
+                    />
+                    <p className="text-xs text-muted-foreground">How many workers do you need for this job? Default is 1.</p>
+                  </div>
                   <div className="flex gap-4 pt-4">
                     <Button
                       type="button"
                       variant="outline"
                       className="flex-1"
                       onClick={() => navigate("/employer-dashboard")}
+                      disabled={jobMutation.isPending}
                     >
                       Cancel
                     </Button>
-                    <Button type="submit" className="flex-1 bg-primary hover:bg-primary-hover" size="lg">
+                    <Button
+                      type="submit"
+                      className="flex-1 bg-primary hover:bg-primary-hover"
+                      size="lg"
+                      disabled={jobMutation.isPending || !formData.category || !formData.title}
+                    >
+                      {jobMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Post Job
                     </Button>
                   </div>
@@ -235,4 +330,11 @@ const PostJob = () => {
   );
 };
 
-export default PostJob;
+// Wrap the page with the ProtectedRoute
+const ProtectedPostJobPage = () => (
+  <ProtectedRoute requireRole="employer">
+    <PostJobForm />
+  </ProtectedRoute>
+);
+
+export default ProtectedPostJobPage;

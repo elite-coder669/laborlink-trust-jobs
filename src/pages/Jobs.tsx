@@ -4,123 +4,94 @@ import JobCard from "@/components/JobCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MapPin, Briefcase, Filter } from "lucide-react";
+import { Search, MapPin, Briefcase, Filter, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Link } from "react-router-dom";
+
+// Loading Skeleton
+const JobCardSkeleton = () => (
+  <Card>
+    <CardContent className="pt-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+        <Skeleton className="h-8 w-20" />
+      </div>
+      <Skeleton className="h-5 w-1/4" />
+      <div className="space-y-2.5">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-8 w-1/2" />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Skeleton className="h-5 w-20" />
+        <Skeleton className="h-5 w-20" />
+      </div>
+    </CardContent>
+    <CardFooter>
+      <Skeleton className="h-11 w-full" />
+    </CardFooter>
+  </Card>
+);
+
+// Fetch function
+const fetchJobs = async (
+  searchQuery: string,
+  selectedCategory: string,
+  selectedLocation: string,
+) => {
+  let query = supabase.from("jobs").select(
+    `
+    *,
+    profiles:employer_id (
+      name,
+      verified,
+      trust_score
+    )
+  `,
+  );
+
+  query = query.eq("status", "open");
+
+  if (searchQuery) {
+    // Using `or` to search in title, description, and skills
+    query = query.or(
+      `title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,required_skills.cs.{${searchQuery}}`,
+    );
+  }
+
+  if (selectedCategory !== "all") {
+    query = query.eq("category", selectedCategory);
+  }
+
+  if (selectedLocation !== "all") {
+    query = query.ilike("location", `%${selectedLocation}%`);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data;
+};
 
 const Jobs = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedLocation, setSelectedLocation] = useState("all");
 
-  const allJobs = [
-    {
-      title: "Construction Helper Needed",
-      category: "Construction",
-      location: "Andheri West, Mumbai",
-      duration: "2-3 weeks",
-      wage: "600",
-      wageType: "day",
-      rating: 4.8,
-      employerName: "Krishna Builders",
-      isVerified: true,
-      skills: ["Masonry", "Labor", "Material Handling"],
-    },
-    {
-      title: "Plumber for Residential Work",
-      category: "Plumbing",
-      location: "Koramangala, Bangalore",
-      duration: "1 week",
-      wage: "750",
-      wageType: "day",
-      rating: 4.9,
-      employerName: "Home Care Services",
-      isVerified: true,
-      skills: ["Pipe Fitting", "Repairs", "Installation"],
-    },
-    {
-      title: "Painter for Office Space",
-      category: "Painting",
-      location: "Connaught Place, Delhi",
-      duration: "5 days",
-      wage: "650",
-      wageType: "day",
-      rating: 4.7,
-      employerName: "Office Interiors Ltd",
-      isVerified: false,
-      skills: ["Wall Painting", "Finishing", "Color Mixing"],
-    },
-    {
-      title: "Electrician for New Building",
-      category: "Electrical",
-      location: "Whitefield, Bangalore",
-      duration: "1 month",
-      wage: "800",
-      wageType: "day",
-      rating: 4.9,
-      employerName: "Tech Park Developers",
-      isVerified: true,
-      skills: ["Wiring", "Panel Installation", "Safety"],
-    },
-    {
-      title: "Housekeeping Staff Required",
-      category: "Housekeeping",
-      location: "Bandra West, Mumbai",
-      duration: "Ongoing",
-      wage: "500",
-      wageType: "day",
-      rating: 4.6,
-      employerName: "Elite Residences",
-      isVerified: true,
-      skills: ["Cleaning", "Organization", "Laundry"],
-    },
-    {
-      title: "Delivery Driver Needed",
-      category: "Delivery",
-      location: "Sector 18, Noida",
-      duration: "Full-time",
-      wage: "18000",
-      wageType: "month",
-      rating: 4.5,
-      employerName: "QuickCart Logistics",
-      isVerified: true,
-      skills: ["Driving License", "City Navigation", "Time Management"],
-    },
-    {
-      title: "Mason for Villa Construction",
-      category: "Construction",
-      location: "Juhu, Mumbai",
-      duration: "3 months",
-      wage: "700",
-      wageType: "day",
-      rating: 4.8,
-      employerName: "Premium Homes",
-      isVerified: true,
-      skills: ["Bricklaying", "Plastering", "Tiling"],
-    },
-    {
-      title: "AC Repair Technician",
-      category: "Electrical",
-      location: "Indiranagar, Bangalore",
-      duration: "2-3 days",
-      wage: "900",
-      wageType: "day",
-      rating: 5.0,
-      employerName: "Cool Comfort Services",
-      isVerified: true,
-      skills: ["AC Repair", "Gas Filling", "Maintenance"],
-    },
-  ];
-
-  const filteredJobs = allJobs.filter((job) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesCategory = selectedCategory === "all" || job.category === selectedCategory;
-    const matchesLocation = selectedLocation === "all" || job.location.includes(selectedLocation);
-
-    return matchesSearch && matchesCategory && matchesLocation;
+  const {
+    data: jobs,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["jobs", searchQuery, selectedCategory, selectedLocation],
+    queryFn: () => fetchJobs(searchQuery, selectedCategory, selectedLocation),
+    keepPreviousData: true, // Optional: for a smoother filtering experience
   });
 
   return (
@@ -159,12 +130,11 @@ const Jobs = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Construction">Construction</SelectItem>
-                <SelectItem value="Plumbing">Plumbing</SelectItem>
-                <SelectItem value="Painting">Painting</SelectItem>
-                <SelectItem value="Electrical">Electrical</SelectItem>
-                <SelectItem value="Housekeeping">Housekeeping</SelectItem>
-                <SelectItem value="Delivery">Delivery</SelectItem>
+                <SelectItem value="construction">Construction</SelectItem>
+                <SelectItem value="agriculture">Agriculture</SelectItem>
+                <SelectItem value="shop_renovation">Shop Renovation</SelectItem>
+                <SelectItem value="apartment_association">Apartment Association</SelectItem>
+                <SelectItem value="custom_craft">Custom Craft</SelectItem>
               </SelectContent>
             </Select>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
@@ -178,6 +148,7 @@ const Jobs = () => {
                 <SelectItem value="Bangalore">Bangalore</SelectItem>
                 <SelectItem value="Delhi">Delhi</SelectItem>
                 <SelectItem value="Noida">Noida</SelectItem>
+                {/* Add more locations as needed */}
               </SelectContent>
             </Select>
           </div>
@@ -189,7 +160,11 @@ const Jobs = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-foreground">
-              {filteredJobs.length} Jobs Available
+              {isLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                `${jobs?.length || 0} Jobs Available`
+              )}
             </h2>
             <Button variant="outline">
               <Filter className="w-4 h-4 mr-2" />
@@ -197,17 +172,42 @@ const Jobs = () => {
             </Button>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredJobs.map((job, index) => (
-              <JobCard key={index} {...job} />
-            ))}
+            {isLoading ? (
+              <>
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+              </>
+            ) : error ? (
+              <p className="text-destructive col-span-3">Failed to load jobs.</p>
+            ) : jobs && jobs.length > 0 ? (
+              jobs.map((job: any) => (
+                <Link to={`/jobs/${job.id}`} key={job.id}>
+                  <JobCard
+                    title={job.title}
+                    category={job.category}
+                    location={job.location}
+                    duration={`${job.duration_days || "Varies"}${job.duration_days ? " days" : ""}`}
+                    wage={String(job.wage)}
+                    wageType={job.wage_type}
+                    rating={job.profiles?.trust_score || 0}
+                    employerName={job.profiles?.name || "Unknown Employer"}
+                    isVerified={job.profiles?.verified || false}
+                    skills={job.required_skills || []}
+                  />
+                </Link>
+              ))
+            ) : (
+              <div className="text-center py-12 col-span-3">
+                <p className="text-lg text-muted-foreground">
+                  No jobs found matching your criteria. Try adjusting your filters.
+                </p>
+              </div>
+            )}
           </div>
-          {filteredJobs.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-lg text-muted-foreground">
-                No jobs found matching your criteria. Try adjusting your filters.
-              </p>
-            </div>
-          )}
         </div>
       </section>
     </div>

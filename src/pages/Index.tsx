@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Navigation from "@/components/Navigation";
 import CategoryCard from "@/components/CategoryCard";
 import JobCard from "@/components/JobCard";
@@ -17,8 +16,100 @@ import {
   IndianRupee,
   Users,
   Star,
+  Loader2,
 } from "lucide-react";
 import heroImage from "@/assets/hero-collaboration.jpg";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+
+// Helper components for loading skeletons
+const JobCardSkeleton = () => (
+  <Card>
+    <CardContent className="pt-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+        <Skeleton className="h-8 w-20" />
+      </div>
+      <Skeleton className="h-5 w-1/4" />
+      <div className="space-y-2.5">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-8 w-1/2" />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Skeleton className="h-5 w-20" />
+        <Skeleton className="h-5 w-20" />
+      </div>
+    </CardContent>
+    <CardFooter>
+      <Skeleton className="h-11 w-full" />
+    </CardFooter>
+  </Card>
+);
+
+const WorkerCardSkeleton = () => (
+  <Card>
+    <CardContent className="pt-6 space-y-4">
+      <div className="flex items-start gap-4">
+        <Skeleton className="w-16 h-16 rounded-full" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      </div>
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-10 w-full" />
+      <div className="flex flex-wrap gap-2">
+        <Skeleton className="h-5 w-20" />
+        <Skeleton className="h-5 w-20" />
+      </div>
+    </CardContent>
+    <CardFooter>
+      <Skeleton className="h-11 w-full" />
+    </CardFooter>
+  </Card>
+);
+
+// Function to fetch featured jobs
+const fetchFeaturedJobs = async () => {
+  const { data, error } = await supabase
+    .from("jobs")
+    .select(
+      `
+      *,
+      profiles:employer_id (
+        name,
+        verified,
+        trust_score
+      )
+    `,
+    )
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+// Function to fetch top workers
+const fetchTopWorkers = async () => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .in("role", ["laborer", "artisan"])
+    .order("trust_score", { ascending: false })
+    .limit(3);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
 
 const Index = () => {
   const categories = [
@@ -30,77 +121,23 @@ const Index = () => {
     { icon: Home, title: "Housekeeping", jobCount: "180+" },
   ];
 
-  const featuredJobs = [
-    {
-      title: "Construction Helper Needed",
-      category: "Construction",
-      location: "Andheri West, Mumbai",
-      duration: "2-3 weeks",
-      wage: "600",
-      wageType: "day",
-      rating: 4.8,
-      employerName: "Krishna Builders",
-      isVerified: true,
-      skills: ["Masonry", "Labor", "Material Handling"],
-    },
-    {
-      title: "Plumber for Residential Work",
-      category: "Plumbing",
-      location: "Koramangala, Bangalore",
-      duration: "1 week",
-      wage: "750",
-      wageType: "day",
-      rating: 4.9,
-      employerName: "Home Care Services",
-      isVerified: true,
-      skills: ["Pipe Fitting", "Repairs", "Installation"],
-    },
-    {
-      title: "Painter for Office Space",
-      category: "Painting",
-      location: "Connaught Place, Delhi",
-      duration: "5 days",
-      wage: "650",
-      wageType: "day",
-      rating: 4.7,
-      employerName: "Office Interiors Ltd",
-      isVerified: false,
-      skills: ["Wall Painting", "Finishing", "Color Mixing"],
-    },
-  ];
+  const {
+    data: jobs,
+    isLoading: isLoadingJobs,
+    error: jobsError,
+  } = useQuery({
+    queryKey: ["featuredJobs"],
+    queryFn: fetchFeaturedJobs,
+  });
 
-  const topWorkers = [
-    {
-      name: "Rajesh Kumar",
-      category: "Construction Worker",
-      location: "Mumbai, Maharashtra",
-      rating: 4.9,
-      completedJobs: 145,
-      hourlyRate: "80",
-      skills: ["Masonry", "Concrete Work", "Carpentry"],
-      isVerified: true,
-    },
-    {
-      name: "Priya Sharma",
-      category: "Plumber",
-      location: "Bangalore, Karnataka",
-      rating: 4.8,
-      completedJobs: 89,
-      hourlyRate: "100",
-      skills: ["Pipe Installation", "Repairs", "Maintenance"],
-      isVerified: true,
-    },
-    {
-      name: "Amit Patel",
-      category: "Electrician",
-      location: "Ahmedabad, Gujarat",
-      rating: 5.0,
-      completedJobs: 210,
-      hourlyRate: "120",
-      skills: ["Wiring", "Panel Installation", "Troubleshooting"],
-      isVerified: true,
-    },
-  ];
+  const {
+    data: workers,
+    isLoading: isLoadingWorkers,
+    error: workersError,
+  } = useQuery({
+    queryKey: ["topWorkers"],
+    queryFn: fetchTopWorkers,
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -131,7 +168,7 @@ const Index = () => {
                     Find Jobs
                   </Button>
                 </Link>
-                <Link to="/employers">
+                <Link to="/workers">
                   <Button
                     size="lg"
                     variant="outline"
@@ -228,9 +265,31 @@ const Index = () => {
             </Link>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredJobs.map((job, index) => (
-              <JobCard key={index} {...job} />
-            ))}
+            {isLoadingJobs ? (
+              <>
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+                <JobCardSkeleton />
+              </>
+            ) : jobsError ? (
+              <p className="text-destructive col-span-3">Failed to load jobs.</p>
+            ) : (
+              jobs?.map((job: any) => (
+                <JobCard
+                  key={job.id}
+                  title={job.title}
+                  category={job.category}
+                  location={job.location}
+                  duration={`${job.duration_days || "Varies"}${job.duration_days ? " days" : ""}`}
+                  wage={String(job.wage)}
+                  wageType={job.wage_type}
+                  rating={job.profiles?.trust_score || 0}
+                  employerName={job.profiles?.name || "Unknown Employer"}
+                  isVerified={job.profiles?.verified || false}
+                  skills={job.required_skills || []}
+                />
+              ))
+            )}
           </div>
         </div>
       </section>
@@ -254,14 +313,35 @@ const Index = () => {
             </Link>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {topWorkers.map((worker, index) => (
-              <WorkerCard key={index} {...worker} />
-            ))}
+            {isLoadingWorkers ? (
+              <>
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+                <WorkerCardSkeleton />
+              </>
+            ) : workersError ? (
+              <p className="text-destructive col-span-3">Failed to load workers.</p>
+            ) : (
+              workers?.map((worker: any) => (
+                <WorkerCard
+                  key={worker.id}
+                  name={worker.name}
+                  category={worker.role.charAt(0).toUpperCase() + worker.role.slice(1)}
+                  location={worker.location || "N/A"}
+                  rating={worker.trust_score || 0}
+                  completedJobs={worker.completed_jobs_count || 0}
+                  hourlyRate={String(worker.hourly_rate || "N/A")}
+                  skills={worker.skills || []}
+                  isVerified={worker.verified || false}
+                  avatarUrl={worker.avatar_url}
+                />
+              ))
+            )}
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* CTA Section (Rest of the page is static, so it remains unchanged) */}
       <section className="py-16 md:py-20 bg-gradient-hero relative overflow-hidden">
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-3xl mx-auto text-center text-white space-y-6">
@@ -273,19 +353,23 @@ const Index = () => {
               together
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Button
-                size="lg"
-                className="bg-white text-primary hover:bg-white/90 text-lg px-8 py-6"
-              >
-                Register as Worker
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-white/10 text-white border-white/30 hover:bg-white/20 text-lg px-8 py-6"
-              >
-                Register as Employer
-              </Button>
+              <Link to="/auth">
+                <Button
+                  size="lg"
+                  className="bg-white text-primary hover:bg-white/90 text-lg px-8 py-6"
+                >
+                  Register as Worker
+                </Button>
+              </Link>
+              <Link to="/auth">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="bg-white/10 text-white border-white/30 hover:bg-white/20 text-lg px-8 py-6"
+                >
+                  Register as Employer
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -315,12 +399,12 @@ const Index = () => {
                   </Link>
                 </li>
                 <li>
-                  <Link to="/register" className="hover:text-primary transition-colors">
+                  <Link to="/auth" className="hover:text-primary transition-colors">
                     Register
                   </Link>
                 </li>
                 <li>
-                  <Link to="/support" className="hover:text-primary transition-colors">
+                  <Link to="/about" className="hover:text-primary transition-colors">
                     Support
                   </Link>
                 </li>
@@ -340,7 +424,7 @@ const Index = () => {
                   </Link>
                 </li>
                 <li>
-                  <Link to="/pricing" className="hover:text-primary transition-colors">
+                  <Link to="/about" className="hover:text-primary transition-colors">
                     Pricing
                   </Link>
                 </li>
@@ -355,12 +439,12 @@ const Index = () => {
                   </Link>
                 </li>
                 <li>
-                  <Link to="/contact" className="hover:text-primary transition-colors">
+                  <Link to="/about" className="hover:text-primary transition-colors">
                     Contact
                   </Link>
                 </li>
                 <li>
-                  <Link to="/privacy" className="hover:text-primary transition-colors">
+                  <Link to="/about" className="hover:text-primary transition-colors">
                     Privacy Policy
                   </Link>
                 </li>

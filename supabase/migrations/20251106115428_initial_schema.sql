@@ -1,12 +1,12 @@
 -- Enable necessary extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 
 -- Create enum types
 CREATE TYPE public.user_role AS ENUM ('laborer', 'employer', 'artisan');
 CREATE TYPE public.job_category AS ENUM ('construction', 'agriculture', 'shop_renovation', 'apartment_association', 'custom_craft');
 CREATE TYPE public.wage_type AS ENUM ('hourly', 'daily', 'project');
 CREATE TYPE public.job_status AS ENUM ('open', 'in_progress', 'completed', 'cancelled');
-CREATE TYPE public.application_status AS ENUM ('submitted', 'under_review', 'accepted', 'rejected');
+CREATE TYPE public.application_status AS ENUM ('submitted', 'under_review', 'accepted', 'rejected', 'invited');
 CREATE TYPE public.payment_status AS ENUM ('pending', 'held', 'released', 'completed');
 CREATE TYPE public.bid_status AS ENUM ('pending', 'accepted', 'rejected');
 
@@ -31,7 +31,7 @@ CREATE TABLE public.profiles (
 
 -- Jobs table
 CREATE TABLE public.jobs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE public.jobs (
 
 -- Applications table
 CREATE TABLE public.applications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   laborer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   message TEXT,
@@ -64,7 +64,7 @@ CREATE TABLE public.applications (
 
 -- Bids table (for CustomCraft)
 CREATE TABLE public.bids (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   artisan_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   bid_amount DECIMAL(10,2) NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE public.bids (
 
 -- Payments table (simulated)
 CREATE TABLE public.payments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   payer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   payee_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -90,7 +90,7 @@ CREATE TABLE public.payments (
 
 -- Reviews table
 CREATE TABLE public.reviews (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   reviewer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   reviewee_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -102,7 +102,7 @@ CREATE TABLE public.reviews (
 
 -- Messages table (simulated)
 CREATE TABLE public.messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID REFERENCES public.jobs(id) ON DELETE CASCADE,
   sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   receiver_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -113,7 +113,7 @@ CREATE TABLE public.messages (
 
 -- Custom craft uploads table
 CREATE TABLE public.custom_craft_uploads (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   image_url TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -159,8 +159,16 @@ CREATE POLICY "Applications viewable by job owner and applicant" ON public.appli
     auth.uid() IN (SELECT employer_id FROM public.jobs WHERE id = job_id)
   );
 
-CREATE POLICY "Laborers can create applications" ON public.applications
-  FOR INSERT WITH CHECK (auth.uid() = laborer_id);
+CREATE POLICY "Laborers/Artisans can create applications" ON public.applications
+  FOR INSERT WITH CHECK (
+    auth.uid() = laborer_id AND 
+    (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('laborer', 'artisan')
+  );
+  
+CREATE POLICY "Employers can create 'invited' applications" ON public.applications
+  FOR INSERT WITH CHECK (
+    auth.uid() IN (SELECT employer_id FROM public.jobs WHERE id = job_id)
+  );
 
 CREATE POLICY "Applicants can update their own applications" ON public.applications
   FOR UPDATE USING (auth.uid() = laborer_id);
@@ -232,12 +240,16 @@ CREATE INDEX idx_messages_receiver ON public.messages(receiver_id);
 
 -- Trigger function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql
+AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Apply triggers to relevant tables
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles

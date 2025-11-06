@@ -5,13 +5,39 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// Dev-time guard: fail fast when env vars are missing so we don't silently hang on network calls.
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  // Provide helpful console output with guidance
+  console.error(
+    "Supabase environment variables missing: VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY",
+    { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY }
+  );
+
+  // In development, throw to make the problem obvious and stop the app early.
+  // In production, we only log the error so the app can decide how to behave.
+  try {
+    // Vite exposes `import.meta.env.DEV`; use it if available to decide behavior.
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    if (import.meta?.env?.DEV) {
+      throw new Error(
+        "Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY. Check your .env and restart the dev server."
+      );
+    }
+  } catch (e) {
+    // If import.meta.env isn't available in some runtime, still throw in dev-like environments.
+    // Re-throw the error so it surfaces during development.
+    throw e;
+  }
+}
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL as string, SUPABASE_PUBLISHABLE_KEY as string, {
   auth: {
     storage: localStorage,
     persistSession: true,
-    autoRefreshToken: true,
+    autoRefreshToken: false, // <-- SET THIS TO FALSE
   }
 });

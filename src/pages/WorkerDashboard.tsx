@@ -3,45 +3,33 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Briefcase, DollarSign, Star, TrendingUp, MapPin, Calendar, Clock } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { Briefcase, DollarSign, Star, TrendingUp, MapPin, Calendar, Clock, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const WorkerDashboard = () => {
   const { profile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [applications, setApplications] = useState<any[]>([]);
-  const [activeJobs, setActiveJobs] = useState<any[]>([]);
-  const [earnings, setEarnings] = useState(0);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!authLoading && !profile) {
-      navigate("/auth");
-      return;
-    }
-
-    if (profile?.role === "employer") {
-      navigate("/employer-dashboard");
-      return;
-    }
-
-    if (profile) {
-      loadDashboardData();
-    }
-  }, [profile, authLoading, navigate]);
-
-  const loadDashboardData = async () => {
-    if (!profile) return;
-
-    try {
-      // Load applications
-      const { data: appsData } = await supabase
+  // Query to fetch applications
+  const {
+    data: applications,
+    isLoading: isLoadingApplications,
+  } = useQuery({
+    queryKey: ["workerApplications", profile?.id],
+    queryFn: async () => {
+      if (!profile) return [];
+      const { data: appsData, error } = await supabase
         .from("applications")
-        .select(`
+        .select(
+          `
           *,
           jobs (
             id,
@@ -52,33 +40,81 @@ const WorkerDashboard = () => {
             category,
             profiles:employer_id (name, verified)
           )
-        `)
+        `,
+        )
         .eq("laborer_id", profile.id)
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return appsData || [];
+    },
+    enabled: !!profile,
+  });
 
-      setApplications(appsData || []);
-
-      // Load active jobs (accepted applications)
-      const activeApps = appsData?.filter((app) => app.status === "accepted") || [];
-      setActiveJobs(activeApps);
-
-      // Calculate earnings from completed payments
-      const { data: paymentsData } = await supabase
+  // Query to fetch earnings
+  const { data: earnings } = useQuery({
+    queryKey: ["workerEarnings", profile?.id],
+    queryFn: async () => {
+      if (!profile) return 0;
+      const { data: paymentsData, error } = await supabase
         .from("payments")
         .select("amount")
         .eq("payee_id", profile.id)
         .eq("status", "completed");
+      if (error) throw error;
+      const totalEarnings =
+        paymentsData?.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0) || 0;
+      return totalEarnings;
+    },
+    enabled: !!profile,
+  });
 
-      const totalEarnings = paymentsData?.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0) || 0;
-      setEarnings(totalEarnings);
-    } catch (error) {
-      console.error("Error loading dashboard:", error);
-    } finally {
-      setLoading(false);
+  // Mutation to update application status (Accept/Reject)
+  const useApplicationUpdate = useMutation({
+    mutationFn: async ({
+      applicationId,
+      newStatus,
+    }: {
+      applicationId: string;
+      newStatus: "accepted" | "rejected";
+    }) => {
+      const { data, error } = await supabase
+        .from("applications")
+        .update({ status: newStatus })
+        .eq("id", applicationId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: `Invitation ${data.status}!`,
+        description: `You have ${data.status} the job offer.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["workerApplications", profile?.id] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update application.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Redirect logic
+  useEffect(() => {
+    if (!authLoading && !profile) {
+      navigate("/auth");
+      return;
     }
-  };
+    if (profile?.role === "employer") {
+      navigate("/employer-dashboard");
+      return;
+    }
+  }, [profile, authLoading, navigate]);
 
-  if (authLoading || loading) {
+  if (authLoading || isLoadingApplications) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -86,12 +122,17 @@ const WorkerDashboard = () => {
     );
   }
 
+  const activeJobs = applications?.filter((app) => app.status === "accepted") || [];
+  const submittedOrPending =
+    applications?.filter((a) => a.status === "submitted" || a.status === "under_review").length ||
+    0;
+
   const stats = [
     {
-      title: "Active Applications",
-      value: applications.filter((a) => a.status === "submitted" || a.status === "under_review").length,
+      title: "Pending Applications",
+      value: submittedOrPending,
       icon: Briefcase,
-      change: "+2 this week",
+      change: "Waiting for review",
     },
     {
       title: "Jobs Completed",
@@ -100,8 +141,8 @@ const WorkerDashboard = () => {
       change: "All time",
     },
     {
-      title: "Earnings This Month",
-      value: `₹${earnings.toLocaleString()}`,
+      title: "Total Earnings",
+      value: `₹${(earnings || 0).toLocaleString()}`,
       icon: DollarSign,
       change: "Total completed",
     },
@@ -113,19 +154,51 @@ const WorkerDashboard = () => {
     },
   ];
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return "bg-blue-500/10 text-blue-600";
-      case "under_review":
-        return "bg-yellow-500/10 text-yellow-600";
-      case "accepted":
-        return "bg-green-500/10 text-green-600";
-      case "rejected":
-        return "bg-red-500/10 text-red-600";
-      default:
-        return "bg-gray-500/10 text-gray-600";
+  const getStatusComponent = (app: any) => {
+    const status = app.status;
+    const colors: Record<string, string> = {
+      invited: "bg-purple-500/10 text-purple-600",
+      submitted: "bg-blue-500/10 text-blue-600",
+      under_review: "bg-yellow-500/10 text-yellow-600",
+      accepted: "bg-green-500/10 text-green-600",
+      rejected: "bg-red-500/10 text-red-600",
+      default: "bg-gray-500/10 text-gray-600",
+    };
+    const colorClass = colors[status] || colors.default;
+
+    if (status === "invited") {
+      return (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-red-500 text-red-500 hover:bg-red-50 hover:text-red-600"
+            onClick={() =>
+              useApplicationUpdate.mutate({ applicationId: app.id, newStatus: "rejected" })
+            }
+            disabled={useApplicationUpdate.isPending}
+          >
+            Reject
+          </Button>
+          <Button
+            size="sm"
+            className="bg-secondary hover:bg-secondary-hover"
+            onClick={() =>
+              useApplicationUpdate.mutate({ applicationId: app.id, newStatus: "accepted" })
+            }
+            disabled={useApplicationUpdate.isPending}
+          >
+            Accept
+          </Button>
+        </div>
+      );
     }
+
+    if (status === "submitted" || status === "under_review") {
+      return <Badge className={colorClass}>Pending Employer</Badge>;
+    }
+
+    return <Badge className={colorClass}>{status.replace("_", " ")}</Badge>;
   };
 
   return (
@@ -170,7 +243,9 @@ const WorkerDashboard = () => {
                 <CardContent className="py-12 text-center">
                   <Briefcase className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-semibold mb-2">No Applications Yet</h3>
-                  <p className="text-muted-foreground mb-4">Start applying to jobs to see them here</p>
+                  <p className="text-muted-foreground mb-4">
+                    Start applying to jobs to see them here
+                  </p>
                   <Link to="/jobs">
                     <Button>Browse Jobs</Button>
                   </Link>
@@ -194,19 +269,21 @@ const WorkerDashboard = () => {
                           </span>
                         </CardDescription>
                       </div>
-                      <Badge className={getStatusColor(app.status)}>
-                        {app.status.replace("_", " ")}
-                      </Badge>
+                      {/* This now renders buttons or a badge based on status */}
+                      {getStatusComponent(app)}
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="flex justify-between items-center">
                       <div className="text-sm text-muted-foreground flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        Applied {new Date(app.created_at).toLocaleDateString()}
+                        {app.status === "invited" ? "Invited" : "Applied"}{" "}
+                        {new Date(app.created_at).toLocaleDateString()}
                       </div>
                       <Link to={`/jobs/${app.job_id}`}>
-                        <Button variant="outline" size="sm">View Job</Button>
+                        <Button variant="outline" size="sm">
+                          View Job
+                        </Button>
                       </Link>
                     </div>
                   </CardContent>
@@ -221,7 +298,9 @@ const WorkerDashboard = () => {
                 <CardContent className="py-12 text-center">
                   <Clock className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                   <h3 className="text-lg font-semibold mb-2">No Active Jobs</h3>
-                  <p className="text-muted-foreground">Accepted applications will appear here</p>
+                  <p className="text-muted-foreground">
+                    Accepted applications will appear here
+                  </p>
                 </CardContent>
               </Card>
             ) : (
@@ -232,7 +311,9 @@ const WorkerDashboard = () => {
                     <CardDescription>
                       Employer: {app.jobs?.profiles?.name}
                       {app.jobs?.profiles?.verified && (
-                        <Badge variant="secondary" className="ml-2">Verified</Badge>
+                        <Badge variant="secondary" className="ml-2">
+                          Verified
+                        </Badge>
                       )}
                     </CardDescription>
                   </CardHeader>
@@ -264,4 +345,11 @@ const WorkerDashboard = () => {
   );
 };
 
-export default WorkerDashboard;
+// Wrap the page with the ProtectedRoute
+const ProtectedWorkerDashboard = () => (
+  <ProtectedRoute requireRole="laborer">
+    <WorkerDashboard />
+  </ProtectedRoute>
+);
+
+export default ProtectedWorkerDashboard;

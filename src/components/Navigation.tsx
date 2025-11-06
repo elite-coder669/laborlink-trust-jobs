@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 const Navigation = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { user, profile, signOut } = useAuth();
+  console.log("NAV BAR: Rendering with profile:", profile); // <-- ADD THIS
   const navigate = useNavigate();
   const { toast } = useToast();
 

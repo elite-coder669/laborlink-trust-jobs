@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -13,20 +13,14 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const { signUp, signIn, signInWithGoogle, user } = useAuth();
+  // Get authLoading from context to prevent rendering page while context is loading
+  const { signUp, signIn, signInWithGoogle, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Redirect if already logged in
-  if (user) {
-    navigate("/");
-    return null;
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       if (isLogin) {
         const { error } = await signIn(email, password);
@@ -36,16 +30,16 @@ const Auth = () => {
           title: "Welcome back!",
           description: "You've successfully signed in.",
         });
-        navigate("/");
+        // NO NAVIGATION HERE. AppRoutes will handle it.
       } else {
         const { error } = await signUp(email, password);
         if (error) throw error;
         
         toast({
           title: "Account created!",
-          description: "Please complete your profile setup.",
+          description: "Please check your email to verify.",
         });
-        navigate("/onboarding");
+        // NO NAVIGATION HERE. AppRoutes will redirect to onboarding.
       }
     } catch (error: any) {
       toast({
@@ -54,7 +48,7 @@ const Auth = () => {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setLoading(false); // Always set loading false
     }
   };
 
@@ -63,6 +57,7 @@ const Auth = () => {
     try {
       const { error } = await signInWithGoogle();
       if (error) throw error;
+      // AppRoutes will handle the redirect.
     } catch (error: any) {
       toast({
         title: "Error",
@@ -72,6 +67,12 @@ const Auth = () => {
       setLoading(false);
     }
   };
+
+  // While auth is loading, or if user is logged in, show nothing
+  // AppRoutes is handling the redirect.
+  if (authLoading || user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
