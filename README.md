@@ -1,5 +1,11 @@
 # LaborLink — Trust Jobs Marketplace
 
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+![React](https://img.shields.io/badge/React-18-61DAFB)
+![Supabase](https://img.shields.io/badge/Supabase-F3671A?logo=supabase)
+![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.x-06B6D4)
+![Status](https://img.shields.io/badge/status-active-brightgreen)
+
 A full-stack job marketplace connecting daily-wage laborers, skilled artisans, and employers. Built with trust scoring, role-based dashboards, and a custom-craft bidding system.
 
 ## Stack
