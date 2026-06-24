@@ -1,71 +1,60 @@
-# Welcome to your Lovable project
+# LaborLink — Trust Jobs Marketplace
 
-## Project info
+A full-stack job marketplace connecting daily-wage laborers, skilled artisans, and employers. Built with trust scoring, role-based dashboards, and a custom-craft bidding system.
 
-## How can I edit this code?
+## Stack
 
-There are several ways of editing your application.
+- TypeScript / React 18 — front-end
+- Vite 5 + Tailwind CSS + shadcn/ui — build and design system
+- Supabase — backend (PostgreSQL, Auth, Storage, Row-Level Security)
+- TanStack React Query — server state management
+- react-hook-form + Zod — form validation
+- Lucide React — icons
 
-**Use Lovable**
+## How it works
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/d1b21841-6e1c-4186-8bb7-879a86e101f1) and start prompting.
+LaborLink serves three user roles:
 
-Changes made via Lovable will be committed automatically to this repo.
+**Laborers** browse and search jobs by category and location, view detailed job information with employer ratings, and apply with a custom message and expected wage.
 
-**Use your preferred IDE**
+**Employers** post jobs with wage type (hourly / daily / fixed), review applicants with trust scores and experience, and accept or reject applications.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+**Artisans** browse custom-craft projects and submit bids with amount, timeline, and a message. Employers can upload reference images for craft projects.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Every user has a trust score (0–5) built from reviews and ratings. Verified profiles, trust badges, and transparent review histories build accountability into the marketplace.
 
-Follow these steps:
+## Key features
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+- Three-role system (laborer, employer, artisan) with separate dashboards
+- Trust scoring — 1–5 star reviews drive profile trustworthiness
+- Custom-craft marketplace — artisans bid on bespoke projects
+- In-app messaging between hiring parties
+- Payment tracking with status pipeline
+- Row-Level Security on every database table
+- Dark mode and responsive design
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+## Architecture
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+React SPA → Supabase (PostgreSQL + Auth + RLS)
+  ├── Public pages: landing, jobs, workers, about, auth
+  ├── Protected pages: employer dashboard, worker dashboard, post-job, onboarding
+  └── Components: nav, role-based routing, trust badges, UI kit
 ```
 
-**Edit a file directly in GitHub**
+## What this demonstrates
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- Full-stack web application with authentication and authorization
+- Role-based access control with Supabase RLS
+- Real-time database queries and server state management
+- Responsive design with Tailwind CSS
+- Form validation and user onboarding flows
+- Marketplace platform architecture
 
-**Use GitHub Codespaces**
+## Run locally
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/d1b21841-6e1c-4186-8bb7-879a86e101f1) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```bash
+npm install
+cp .env.example .env   # add Supabase credentials
+npm run dev
+```
