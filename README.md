@@ -35,11 +35,36 @@ Every user has a trust score (0–5) built from reviews and ratings. Verified pr
 
 ## Architecture
 
-```
-React SPA → Supabase (PostgreSQL + Auth + RLS)
-  ├── Public pages: landing, jobs, workers, about, auth
-  ├── Protected pages: employer dashboard, worker dashboard, post-job, onboarding
-  └── Components: nav, role-based routing, trust badges, UI kit
+```mermaid
+flowchart TD
+    subgraph Frontend["React SPA (Vercel)"]
+        A[Landing Page]
+        B[Auth / Onboarding]
+        C[Jobs / Workers Browse]
+        D[Employer Dashboard]
+        E[Worker Dashboard]
+        F[Post Job]
+    end
+    
+    subgraph Backend["Supabase"]
+        G[(PostgreSQL)]
+        H[Auth / RLS]
+        I[Storage]
+    end
+    
+    subgraph Roles["User Roles"]
+        J[Laborer]
+        K[Employer]
+        L[Artisan]
+    end
+    
+    J -->|applies to| C
+    K -->|posts| F
+    L -->|bids on| C
+    B --> H
+    D & E & F --> H
+    C & D & E --> G
+    H --> G
 ```
 
 ## What this demonstrates
